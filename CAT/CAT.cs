@@ -1,15 +1,22 @@
-using System;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
 using System.Diagnostics;
+using System.Reflection;
 
 public class CAT
 {
     public static int Main()
     {
+
+        string? input = "";
+
+        Dictionary<string, Action<string[]>> globalCommands = new Dictionary<string, Action<string[]>>();
+
+        RegisterBundles();
+
         Console.WriteLine("\e[1;35mC\e[0m# \e[1;35mA\e[0mdvanced \e[1;35mT\e[0merminal!\e[0m");
         Console.WriteLine("Copyright (c) 2025 \e[1;35mlunaNoir\e[0m | \e[32mMIT\e[0m");
-        Console.WriteLine("Type 'exit' to quit.\n");
-        
-        string input = "";
 
         try
         {
@@ -22,9 +29,101 @@ public class CAT
         }
         catch (System.Security.SecurityException)
         {
-            
+
             return 130;
-        };
+        }
+        ;
+
+        void RegisterBundles()
+        {
+            string bundlePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT", "bundles");
+
+            if (!Directory.Exists(bundlePath))
+            {
+                Directory.CreateDirectory(bundlePath);
+            }
+
+            foreach (var file in Directory.GetFiles(bundlePath, "*.cs"))
+            {
+                Console.WriteLine($"Recognized bundle: {file}");
+
+                bool isBaseBundle = false;
+                using (var reader = new StreamReader(file))
+                {
+                    string firstLine = reader.ReadLine()?.Trim() ?? "";
+                    Console.WriteLine($"First line of {file}: {firstLine}");
+                    if (firstLine == "//!CAT.bundle.base")
+                    {
+                        isBaseBundle = true;
+                        Console.WriteLine($"{file} recognized as base bundle");
+                    }
+                }
+
+                Assembly asm = CompileScript(file);
+                foreach (var type in asm.GetTypes())
+                {
+                    foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (method.GetParameters().Length == 1 && method.GetParameters()[0].ParameterType == typeof(string[]))
+                        {
+                            string commandKey = $"{type.Name.ToLower()}.{method.Name.ToLower()}";
+                            Console.WriteLine($"Registering command: {commandKey}");
+                            globalCommands[commandKey] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
+
+                            if (isBaseBundle)
+                            {
+                                Console.WriteLine($"Registering command as base: {method.Name.ToLower()}");
+                                globalCommands[method.Name.ToLower()] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
+                            }
+                        }
+                    }
+                }
+            }
+            foreach (var commandEntry in globalCommands)
+            {
+                Console.WriteLine($"Registered command: {commandEntry.Key}");
+            }
+        }
+
+        Assembly CompileScript(string path)
+        {
+            string code = File.ReadAllText(path);
+
+            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(code);
+
+            string assemblyName = Path.GetRandomFileName();
+            var references = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic)
+                .Select(a => MetadataReference.CreateFromFile(a.Location));
+
+            CSharpCompilation compilation = CSharpCompilation.Create(
+                assemblyName,
+                new SyntaxTree[] { syntaxTree },
+                references,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            using (var ms = new MemoryStream())
+            {
+                EmitResult result = compilation.Emit(ms);
+
+                if (!result.Success)
+                {
+                    IEnumerable<Diagnostic> failures = result.Diagnostics.Where(diagnostic =>
+                        diagnostic.IsWarningAsError ||
+                        diagnostic.Severity == DiagnosticSeverity.Error);
+
+                    Console.WriteLine("Compilation errors:");
+                    foreach (Diagnostic diagnostic in failures)
+                    {
+                        Console.WriteLine(diagnostic.GetMessage());
+                    }
+                    throw new InvalidOperationException("Compilation failed");
+                }
+
+                ms.Seek(0, SeekOrigin.Begin);
+                return Assembly.Load(ms.ToArray());
+            }
+        }
 
         string prompt;
         string user = Environment.UserName;
@@ -54,9 +153,7 @@ public class CAT
         {
             Console.Write($"[{prompt}] ");
 
-            #pragma warning disable CS8600
             input = Console.ReadLine();
-            #pragma warning restore CS8600
 
             if (string.IsNullOrEmpty(input))
             {
@@ -64,14 +161,25 @@ public class CAT
             }
 
             string[] parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            string command = parts[0];
+            string command = parts[0].ToLower();
             string arguments = parts.Length > 1 ? parts[1] : "";
+            string commandKey = "";
 
-            if (command.ToLower() == "exit")
+            if (command.Contains('.'))
             {
-                return 0;
+                var cmdParts = command.Split('.', 2);
+                string bundleName = cmdParts[0];
+                string methodName = cmdParts[1];
+                commandKey = $"{bundleName}.{methodName}";
             }
-
+            if (!string.IsNullOrEmpty(commandKey) && globalCommands.ContainsKey(commandKey))
+            {
+                globalCommands[commandKey](arguments.Split(' '));
+            }
+            else if (globalCommands.ContainsKey(command))
+            {
+                globalCommands[command](arguments.Split(' '));
+            }
             else
             {
                 try
