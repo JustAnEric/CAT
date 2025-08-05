@@ -3,6 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using System.Diagnostics;
 using System.Reflection;
+using System.Collections.Generic;
+using System.IO;
 
 public class CAT
 {
@@ -15,6 +17,7 @@ public class CAT
 
         RegisterBundles();
 
+        Console.WriteLine("");
         Console.WriteLine("\e[1;35mC\e[0m# \e[1;35mA\e[0mdvanced \e[1;35mT\e[0merminal!\e[0m");
         Console.WriteLine("Copyright (c) 2025 \e[1;35mlunaNoir\e[0m | \e[32mMIT\e[0m");
 
@@ -25,14 +28,17 @@ public class CAT
         catch (ArgumentNullException)
         {
             Console.WriteLine("\e[4;31mFatal Error, unable to access PATH Environment Variable!\e[0m");
-            return 129;
+            Console.WriteLine("\e[33mPress any key to quit.\e[0m");
+            Console.ReadKey();
+            Environment.Exit(129);
         }
         catch (System.Security.SecurityException)
         {
-
-            return 130;
+            Console.WriteLine("\e[4;31mFatal Error, security violation when accessing PATH envrionment variable!\e[0m");
+            Console.WriteLine("\e[33mPress any key to quit.\e[0m");
+            Console.ReadKey();
+            Environment.Exit(130);
         }
-        ;
 
         void RegisterBundles()
         {
@@ -45,17 +51,16 @@ public class CAT
 
             foreach (var file in Directory.GetFiles(bundlePath, "*.cs"))
             {
-                Console.WriteLine($"Recognized bundle: {file}");
+                Console.WriteLine($"\e[33mRecognized bundle: {file}\e[0m");
 
                 bool isBaseBundle = false;
                 using (var reader = new StreamReader(file))
                 {
                     string firstLine = reader.ReadLine()?.Trim() ?? "";
-                    Console.WriteLine($"First line of {file}: {firstLine}");
                     if (firstLine == "//!CAT.bundle.base")
                     {
                         isBaseBundle = true;
-                        Console.WriteLine($"{file} recognized as base bundle");
+                        Console.WriteLine($"\e[33m{file} recognized as base bundle.\e[0m");
                     }
                 }
 
@@ -67,21 +72,15 @@ public class CAT
                         if (method.GetParameters().Length == 1 && method.GetParameters()[0].ParameterType == typeof(string[]))
                         {
                             string commandKey = $"{type.Name.ToLower()}.{method.Name.ToLower()}";
-                            Console.WriteLine($"Registering command: {commandKey}");
                             globalCommands[commandKey] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
 
                             if (isBaseBundle)
                             {
-                                Console.WriteLine($"Registering command as base: {method.Name.ToLower()}");
                                 globalCommands[method.Name.ToLower()] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
                             }
                         }
                     }
                 }
-            }
-            foreach (var commandEntry in globalCommands)
-            {
-                Console.WriteLine($"Registered command: {commandEntry.Key}");
             }
         }
 
@@ -112,12 +111,16 @@ public class CAT
                         diagnostic.IsWarningAsError ||
                         diagnostic.Severity == DiagnosticSeverity.Error);
 
-                    Console.WriteLine("Compilation errors:");
+                    Console.WriteLine($"\e[4;31mFatal Error, unable to compile bundle \e[4;35m\"{path}\"\e[4;31m:\e[0;31m");
+                    Console.WriteLine();
                     foreach (Diagnostic diagnostic in failures)
                     {
                         Console.WriteLine(diagnostic.GetMessage());
                     }
-                    throw new InvalidOperationException("Compilation failed");
+                    Console.WriteLine("\e[0m");
+                    Console.WriteLine("\e[33mPress any key to quit.\e[0m");
+                    Console.ReadKey();
+                    Environment.Exit(131);
                 }
 
                 ms.Seek(0, SeekOrigin.Begin);
