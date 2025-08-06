@@ -1,6 +1,4 @@
-Codes 1-128 are reserved for normal command line errors. Codes 129 and above are for internal errors.
-
-0: No Error.
+0: No Error/Success.
 
 129: Environment Variable Access Error
 130: Security Error

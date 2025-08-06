@@ -8,8 +8,11 @@ using System.IO;
 
 public class CAT
 {
-    public static int Main()
+    public static string version = "2025.1.0";
+
+    public static void Main()
     {
+        Console.Title = "C# Advanced Terminal | CAT";
 
         string? input = "";
 
@@ -18,8 +21,8 @@ public class CAT
         RegisterBundles();
 
         Console.WriteLine("");
-        Console.WriteLine("\e[1;35mC\e[0m# \e[1;35mA\e[0mdvanced \e[1;35mT\e[0merminal!\e[0m");
-        Console.WriteLine("Copyright (c) 2025 \e[1;35mlunaNoir\e[0m | \e[32mMIT\e[0m");
+        Console.WriteLine(value: $"\e[1;35mC\e[0m# \e[1;35mA\e[0mdvanced \e[1;35mT\e[0merminal\e[0m {version}");
+        Console.WriteLine("Copyright (c) 2025 \e[1;35mlunaNoir\e[0m");
 
         try
         {
