@@ -95,7 +95,7 @@ public class CAT
 
             string assemblyName = Path.GetRandomFileName();
             var references = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(a => !a.IsDynamic)
+                .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
                 .Select(a => MetadataReference.CreateFromFile(a.Location));
 
             CSharpCompilation compilation = CSharpCompilation.Create(
