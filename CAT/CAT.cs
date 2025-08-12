@@ -3,8 +3,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using System.Diagnostics;
 using System.Reflection;
-using System.Collections.Generic;
-using System.IO;
 
 public class CAT
 {
@@ -54,7 +52,8 @@ public class CAT
 
             foreach (var file in Directory.GetFiles(bundlePath, "*.cs"))
             {
-                Console.WriteLine($"\e[33mRecognized bundle: {file}\e[0m");
+                string bundleName = Path.GetFileNameWithoutExtension(file);
+                Console.WriteLine($"\e[33mRecognized bundle: {bundleName}\e[0m");
 
                 bool isBaseBundle = false;
                 using (var reader = new StreamReader(file))
@@ -63,7 +62,7 @@ public class CAT
                     if (firstLine == "//!CAT.bundle.base")
                     {
                         isBaseBundle = true;
-                        Console.WriteLine($"\e[33m{file} recognized as base bundle.\e[0m");
+                        Console.WriteLine($"\e[33m{bundleName} recognized as base bundle.\e[0m");
                     }
                 }
 
@@ -74,7 +73,7 @@ public class CAT
                     {
                         if (method.GetParameters().Length == 1 && method.GetParameters()[0].ParameterType == typeof(string[]))
                         {
-                            string commandKey = $"{type.Name.ToLower()}.{method.Name.ToLower()}";
+                            string commandKey = $"{bundleName.ToLower()}.{method.Name.ToLower()}";
                             globalCommands[commandKey] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
 
                             if (isBaseBundle)
@@ -114,7 +113,7 @@ public class CAT
                         diagnostic.IsWarningAsError ||
                         diagnostic.Severity == DiagnosticSeverity.Error);
 
-                    Console.WriteLine($"\e[4;31mFatal Error, unable to compile bundle \e[4;35m\"{path}\"\e[4;31m:\e[0;31m");
+                    Console.WriteLine($"\e[4;31mFatal Error, unable to compile bundle \e[4;35m\"{Path.GetFileNameWithoutExtension(path)}\"\e[4;31m:\e[0;31m");
                     Console.WriteLine();
                     foreach (Diagnostic diagnostic in failures)
                     {
