@@ -1,16 +1,10 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Emit;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Security.Principal;
-using System.IO;
 using System.Text;
-using System.Collections.Generic;
 
 public class CAT
 {
@@ -26,7 +20,7 @@ public class CAT
     private const int STD_OUTPUT_HANDLE = -11;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
 
-    public static string version = "2025.1.0";
+    public static string version = "2025-b1.0.0";
 
     private static volatile Process? _currentProcess = null;
     private static volatile CancellationTokenSource? _cancellationTokenSource = null;
