@@ -14,14 +14,16 @@ public class CAT
     private static volatile Process? _currentProcess = null;
     private static volatile CancellationTokenSource? _cancellationTokenSource = null;
 
+    private static Dictionary<string, Func<string[], CancellationToken, Task>> commands = new(StringComparer.OrdinalIgnoreCase);
+
+
     public static void Main()
     {
         Console.Title = "C# Advanced Terminal | CAT";
         Console.TreatControlCAsInput = false;
         Console.CancelKeyPress += OnCancelKeyPress;
 
-        var commands = new Dictionary<string, Func<string[], CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
-        LoadBundles(commands);
+        LoadBundles();
 
         Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m {version}");
         Console.WriteLine("Copyright (c) 2025 \u001b[1;35mlunaNoir\u001b[0m");
@@ -46,14 +48,18 @@ public class CAT
                 if (string.IsNullOrWhiteSpace(input)) continue;
 
                 string[] parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                string cmd = parts[0].ToLower();
+                string cmd = parts[0];
                 string args = parts.Length > 1 ? parts[1] : "";
 
                 try
                 {
                     var token = _cancellationTokenSource.Token;
 
-                    if (commands.TryGetValue(cmd, out var action))
+                    if (Path.GetExtension(cmd).Equals(".catsh", StringComparison.OrdinalIgnoreCase))
+                    {
+                        RunScript(cmd, args, token).Wait(token);
+                    }
+                    else if (commands.TryGetValue(cmd.ToLower(), out var action))
                     {
                         RunCommand(action, args.Split(' '), token).Wait(token);
                     }
@@ -63,7 +69,7 @@ public class CAT
                     }
                 }
                 catch (OperationCanceledException)
-                {}
+                { }
                 finally
                 {
                     _currentProcess = null;
@@ -87,7 +93,7 @@ public class CAT
         }
     }
 
-    private static void LoadBundles(Dictionary<string, Func<string[], CancellationToken, Task>> commands)
+    private static void LoadBundles()
     {
         string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT", "bundles");
         if (!Directory.Exists(path)) Directory.CreateDirectory(path);
@@ -225,7 +231,7 @@ public class CAT
         }
         catch
         {
-            Console.WriteLine($"\u001b[31mError: \"{command}\" was not recognized as a command.\u001b[0m");
+            Console.WriteLine($"\u001b[31mError, \"{command}\" was not recognized as a bundle or executable file.\u001b[0m");
         }
     }
 
@@ -236,6 +242,44 @@ public class CAT
         if (_currentProcess != null && !_currentProcess.HasExited)
         {
             try { _currentProcess.Kill(true); } catch { }
+        }
+    }
+
+    private static async Task RunScript(string filePath, string args, CancellationToken token)
+    {
+        if (!File.Exists(filePath))
+        {
+            Console.WriteLine($"\u001b[31mError, \"{filePath}\" does not exist!\u001b[0m");
+            return;
+        }
+
+        var lines = File.ReadAllLines(filePath)
+                          .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("#"))
+                          .ToArray();
+
+        foreach (var line in lines)
+        {
+            token.ThrowIfCancellationRequested();
+
+            string expandedLine = line;
+
+            for (int i = 0; i < args.Split(' ').Length; i++)
+            {
+                expandedLine = expandedLine.Replace($"%{i + 1}", args.Split(' ')[i]);
+            }
+
+            string[] parts = expandedLine.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            string cmd = parts[0].ToLower();
+            string commandArgs = parts.Length > 1 ? parts[1] : "";
+
+            if (commands.TryGetValue(cmd, out var action))
+            {
+                await RunCommand(action, commandArgs.Split(' '), token);
+            }
+            else
+            {
+                RunExternalCommand(cmd, commandArgs, token);
+            }
         }
     }
 }
