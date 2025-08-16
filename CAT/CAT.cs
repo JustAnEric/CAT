@@ -2,13 +2,26 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using System.Diagnostics;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 
 public class CAT
 {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    private const int STD_OUTPUT_HANDLE = -11;
+    private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
+
     public static string version = "2025.1.0";
 
     private static volatile Process? _currentProcess = null;
@@ -19,9 +32,12 @@ public class CAT
 
     public static void Main()
     {
+
         Console.Title = "C# Advanced Terminal | CAT";
         Console.TreatControlCAsInput = false;
         Console.CancelKeyPress += OnCancelKeyPress;
+
+        EnableColor();
 
         LoadBundles();
 
@@ -103,13 +119,13 @@ public class CAT
             string bundleName = Path.GetFileNameWithoutExtension(file);
             Console.WriteLine($"\u001b[33mRecognized bundle: {bundleName}\u001b[0m");
 
-            bool isBase = false;
+            bool isElevated = false;
             using (var reader = new StreamReader(file))
             {
-                if ((reader.ReadLine()?.Trim() ?? "") == "//!CAT.bundle.base")
+                if ((reader.ReadLine()?.Trim() ?? "") == "//!CAT.bundle.elevated")
                 {
-                    isBase = true;
-                    Console.WriteLine($"\u001b[33m{bundleName} recognized as base bundle.\u001b[0m");
+                    isElevated = true;
+                    Console.WriteLine($"\u001b[33m{bundleName} recognized as elevated bundle.\u001b[0m");
                 }
             }
 
@@ -136,7 +152,7 @@ public class CAT
                             }, token);
                         };
 
-                        if (isBase)
+                        if (isElevated)
                             commands[method.Name.ToLower()] = commands[namespacedKey];
                     }
                 }
@@ -280,6 +296,16 @@ public class CAT
             {
                 RunExternalCommand(cmd, commandArgs, token);
             }
+        }
+    }
+
+    private static void EnableColor()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var handle = GetStdHandle(-11);
+            GetConsoleMode(handle, out uint mode);
+            SetConsoleMode(handle, mode | 0x0004);
         }
     }
 }
