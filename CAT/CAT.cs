@@ -1,215 +1,241 @@
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Emit;
 using System.Diagnostics;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Linq;
 
 public class CAT
 {
     public static string version = "2025.1.0";
 
+    private static volatile Process? _currentProcess = null;
+    private static volatile CancellationTokenSource? _cancellationTokenSource = null;
+
     public static void Main()
     {
         Console.Title = "C# Advanced Terminal | CAT";
+        Console.TreatControlCAsInput = false;
+        Console.CancelKeyPress += OnCancelKeyPress;
 
-        string? input = "";
+        var commands = new Dictionary<string, Func<string[], CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
+        LoadBundles(commands);
 
-        Dictionary<string, Action<string[]>> globalCommands = new Dictionary<string, Action<string[]>>();
-
-        RegisterBundles();
-
-        Console.WriteLine("");
-        Console.WriteLine(value: $"\e[1;35mC\e[0m# \e[1;35mA\e[0mdvanced \e[1;35mT\e[0merminal\e[0m {version}");
-        Console.WriteLine("Copyright (c) 2025 \e[1;35mlunaNoir\e[0m");
-
-        try
-        {
-            string? PATH = Environment.GetEnvironmentVariable("PATH");
-        }
-        catch (ArgumentNullException)
-        {
-            Console.WriteLine("\e[4;31mFatal Error, unable to access PATH Environment Variable!\e[0m");
-            Console.WriteLine("\e[33mPress any key to quit.\e[0m");
-            Console.ReadKey();
-            Environment.Exit(129);
-        }
-        catch (System.Security.SecurityException)
-        {
-            Console.WriteLine("\e[4;31mFatal Error, security violation when accessing PATH envrionment variable!\e[0m");
-            Console.WriteLine("\e[33mPress any key to quit.\e[0m");
-            Console.ReadKey();
-            Environment.Exit(130);
-        }
-
-        void RegisterBundles()
-        {
-            string bundlePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT", "bundles");
-
-            if (!Directory.Exists(bundlePath))
-            {
-                Directory.CreateDirectory(bundlePath);
-            }
-
-            foreach (var file in Directory.GetFiles(bundlePath, "*.cs"))
-            {
-                string bundleName = Path.GetFileNameWithoutExtension(file);
-                Console.WriteLine($"\e[33mRecognized bundle: {bundleName}\e[0m");
-
-                bool isBaseBundle = false;
-                using (var reader = new StreamReader(file))
-                {
-                    string firstLine = reader.ReadLine()?.Trim() ?? "";
-                    if (firstLine == "//!CAT.bundle.base")
-                    {
-                        isBaseBundle = true;
-                        Console.WriteLine($"\e[33m{bundleName} recognized as base bundle.\e[0m");
-                    }
-                }
-
-                Assembly asm = CompileScript(file);
-                foreach (var type in asm.GetTypes())
-                {
-                    foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
-                    {
-                        if (method.GetParameters().Length == 1 && method.GetParameters()[0].ParameterType == typeof(string[]))
-                        {
-                            string commandKey = $"{bundleName.ToLower()}.{method.Name.ToLower()}";
-                            globalCommands[commandKey] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
-
-                            if (isBaseBundle)
-                            {
-                                globalCommands[method.Name.ToLower()] = args => method.Invoke(Activator.CreateInstance(type), new object[] { args });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Assembly CompileScript(string path)
-        {
-            string code = File.ReadAllText(path);
-
-            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(code);
-
-            string assemblyName = Path.GetRandomFileName();
-            var references = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
-                .Select(a => MetadataReference.CreateFromFile(a.Location));
-
-            CSharpCompilation compilation = CSharpCompilation.Create(
-                assemblyName,
-                new SyntaxTree[] { syntaxTree },
-                references,
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-            using (var ms = new MemoryStream())
-            {
-                EmitResult result = compilation.Emit(ms);
-
-                if (!result.Success)
-                {
-                    IEnumerable<Diagnostic> failures = result.Diagnostics.Where(diagnostic =>
-                        diagnostic.IsWarningAsError ||
-                        diagnostic.Severity == DiagnosticSeverity.Error);
-
-                    Console.WriteLine($"\e[4;31mFatal Error, unable to compile bundle \e[4;35m\"{Path.GetFileNameWithoutExtension(path)}\"\e[4;31m:\e[0;31m");
-                    Console.WriteLine();
-                    foreach (Diagnostic diagnostic in failures)
-                    {
-                        Console.WriteLine(diagnostic.GetMessage());
-                    }
-                    Console.WriteLine("\e[0m");
-                    Console.WriteLine("\e[33mPress any key to quit.\e[0m");
-                    Console.ReadKey();
-                    Environment.Exit(131);
-                }
-
-                ms.Seek(0, SeekOrigin.Begin);
-                return Assembly.Load(ms.ToArray());
-            }
-        }
-
-        string prompt;
-        string user = Environment.UserName;
-        string machine = Environment.MachineName;
-        string directory = Environment.CurrentDirectory;
-
-        string unixPath = directory.Replace('\\', '/');
-
-        string homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).Replace('\\', '/');
-        if (unixPath.StartsWith(homePath))
-        {
-            unixPath = "~" + unixPath.Substring(homePath.Length);
-        }
-
-        if (unixPath.Length > 30)
-        {
-            var parts = unixPath.Split('/');
-            if (parts.Length > 3)
-            {
-                unixPath = $".../{parts[^2]}/{parts[^1]}";
-            }
-        }
-
-        prompt = $"\e[33m{user}\e[0m@\e[35m{machine}\e[0m:\e[36m{unixPath}\e[0m";
+        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m {version}");
+        Console.WriteLine("Copyright (c) 2025 \u001b[1;35mlunaNoir\u001b[0m");
 
         while (true)
         {
+            string prompt = GetPrompt();
             Console.Write($"[{prompt}] ");
 
-            input = Console.ReadLine();
-
-            if (string.IsNullOrEmpty(input))
+            using (_cancellationTokenSource = new CancellationTokenSource())
             {
-                continue;
-            }
-
-            string[] parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            string command = parts[0].ToLower();
-            string arguments = parts.Length > 1 ? parts[1] : "";
-            string commandKey = "";
-
-            if (command.Contains('.'))
-            {
-                var cmdParts = command.Split('.', 2);
-                string bundleName = cmdParts[0];
-                string methodName = cmdParts[1];
-                commandKey = $"{bundleName}.{methodName}";
-            }
-            if (!string.IsNullOrEmpty(commandKey) && globalCommands.ContainsKey(commandKey))
-            {
-                globalCommands[commandKey](arguments.Split(' '));
-            }
-            else if (globalCommands.ContainsKey(command))
-            {
-                globalCommands[command](arguments.Split(' '));
-            }
-            else
-            {
+                string? input;
                 try
                 {
-                    ProcessStartInfo startInfo = new ProcessStartInfo()
-                    {
-                        FileName = command,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = false
-                    };
+                    input = ReadLineWithCancel(_cancellationTokenSource.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    continue;
+                }
 
-                    using (Process? process = Process.Start(startInfo))
+                if (string.IsNullOrWhiteSpace(input)) continue;
+
+                string[] parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                string cmd = parts[0].ToLower();
+                string args = parts.Length > 1 ? parts[1] : "";
+
+                try
+                {
+                    var token = _cancellationTokenSource.Token;
+
+                    if (commands.TryGetValue(cmd, out var action))
                     {
-                        if (process != null)
-                        {
-                            process.WaitForExit();
-                        }
+                        RunCommand(action, args.Split(' '), token).Wait(token);
+                    }
+                    else
+                    {
+                        RunExternalCommand(cmd, args, token);
                     }
                 }
-                catch (Exception)
+                catch (OperationCanceledException)
+                {}
+                finally
                 {
-                    Console.WriteLine($"\e[31mError, \"{command}\" was not recognized as a command, script, or executable file.\e[0m");
+                    _currentProcess = null;
+                    _cancellationTokenSource = null;
                 }
             }
+        }
+    }
+
+    private static async Task RunCommand(Func<string[], CancellationToken, Task> action, string[] args, CancellationToken token)
+    {
+        try
+        {
+            await action(args, token);
+        }
+        catch (OperationCanceledException)
+        {}
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\u001b[31mError in command: {ex.Message}\u001b[0m");
+        }
+    }
+
+    private static void LoadBundles(Dictionary<string, Func<string[], CancellationToken, Task>> commands)
+    {
+        string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT", "bundles");
+        if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+
+        foreach (var file in Directory.GetFiles(path, "*.cs"))
+        {
+            string bundleName = Path.GetFileNameWithoutExtension(file);
+            Console.WriteLine($"\u001b[33mRecognized bundle: {bundleName}\u001b[0m");
+
+            bool isBase = false;
+            using (var reader = new StreamReader(file))
+            {
+                if ((reader.ReadLine()?.Trim() ?? "") == "//!CAT.bundle.base")
+                {
+                    isBase = true;
+                    Console.WriteLine($"\u001b[33m{bundleName} recognized as base bundle.\u001b[0m");
+                }
+            }
+
+            var asm = CompileScript(file);
+
+            foreach (var type in asm.GetTypes())
+            {
+                foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    var parameters = method.GetParameters();
+                    if (parameters.Length == 2 &&
+                        parameters[0].ParameterType == typeof(string[]) &&
+                        parameters[1].ParameterType == typeof(CancellationToken))
+                    {
+                        string namespacedKey = $"{bundleName.ToLower()}.{method.Name.ToLower()}";
+
+                        commands[namespacedKey] = async (args, token) =>
+                        {
+                            var instance = Activator.CreateInstance(type);
+                            await Task.Run(() =>
+                            {
+                                try { method.Invoke(instance, new object[] { args, token }); }
+                                catch (TargetInvocationException tie) when (tie.InnerException is OperationCanceledException) { }
+                            }, token);
+                        };
+
+                        if (isBase)
+                            commands[method.Name.ToLower()] = commands[namespacedKey];
+                    }
+                }
+            }
+        }
+    }
+
+    private static Assembly CompileScript(string path)
+    {
+        string code = File.ReadAllText(path);
+        var tree = CSharpSyntaxTree.ParseText(code);
+
+        var refs = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
+            .Select(a => MetadataReference.CreateFromFile(a.Location));
+
+        var compilation = CSharpCompilation.Create(
+            Path.GetRandomFileName(),
+            new[] { tree },
+            refs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+        );
+
+        using var ms = new MemoryStream();
+        var result = compilation.Emit(ms);
+        if (!result.Success)
+        {
+            var errors = result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error);
+            Console.WriteLine($"\u001b[4;31mFatal Error compiling {Path.GetFileNameWithoutExtension(path)}:\u001b[0m");
+            foreach (var err in errors) Console.WriteLine(err.GetMessage());
+            Console.WriteLine("\u001b[33mPress any key to quit.\u001b[0m");
+            Console.ReadKey();
+            Environment.Exit(1);
+        }
+
+        ms.Seek(0, SeekOrigin.Begin);
+        return Assembly.Load(ms.ToArray());
+    }
+
+    private static string GetPrompt()
+    {
+        string user = Environment.UserName;
+        string host = Environment.MachineName;
+        string dir = Environment.CurrentDirectory;
+
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).Replace('\\', '/');
+        string unix = dir.Replace('\\', '/');
+        if (unix.StartsWith(home)) unix = "~" + unix.Substring(home.Length);
+
+        if (unix.Length > 30)
+        {
+            var parts = unix.Split('/');
+            if (parts.Length > 3) unix = $".../{parts[^2]}/{parts[^1]}";
+        }
+
+        return $"\u001b[33m{user}\u001b[0m@\u001b[35m{host}\u001b[0m:\u001b[36m{unix}\u001b[0m";
+    }
+
+    private static string ReadLineWithCancel(CancellationToken token)
+    {
+        var task = Task.Run(() => Console.ReadLine() ?? "", token);
+        while (!task.IsCompleted)
+        {
+            if (token.IsCancellationRequested) throw new OperationCanceledException();
+            Thread.Sleep(10);
+        }
+        return task.Result;
+    }
+
+    private static void RunExternalCommand(string command, string args, CancellationToken token)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = command,
+                Arguments = args,
+                UseShellExecute = false,
+                CreateNoWindow = false
+            };
+
+            _currentProcess = Process.Start(psi);
+            while (_currentProcess != null && !_currentProcess.HasExited)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    try { _currentProcess.Kill(true); } catch { }
+                    break;
+                }
+                Thread.Sleep(10);
+            }
+        }
+        catch
+        {
+            Console.WriteLine($"\u001b[31mError: \"{command}\" was not recognized as a command.\u001b[0m");
+        }
+    }
+
+    private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        e.Cancel = true;
+        _cancellationTokenSource?.Cancel();
+        if (_currentProcess != null && !_currentProcess.HasExited)
+        {
+            try { _currentProcess.Kill(true); } catch { }
         }
     }
 }
