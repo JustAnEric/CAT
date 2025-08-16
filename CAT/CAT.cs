@@ -29,7 +29,7 @@ public class CAT
         while (true)
         {
             string prompt = GetPrompt();
-            Console.Write($"[{prompt}] ");
+            Console.Write($"\n[{prompt}] ");
 
             using (_cancellationTokenSource = new CancellationTokenSource())
             {
