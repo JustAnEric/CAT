@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Security.Principal;
 using System.IO;
+using System.Text;
+using System.Collections.Generic;
 
 public class CAT
 {
@@ -31,10 +33,8 @@ public class CAT
 
     private static Dictionary<string, Func<string[], CancellationToken, Task>> commands = new(StringComparer.OrdinalIgnoreCase);
 
-
     public static void Main()
     {
-
         Console.Title = "C# Advanced Terminal | CAT";
         Console.TreatControlCAsInput = false;
         Console.CancelKeyPress += OnCancelKeyPress;
@@ -42,7 +42,6 @@ public class CAT
         string promptSymbol = IsAdministrator() ? "#" : "$";
 
         EnableColor();
-
         LoadBundles();
 
         Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m {version}");
@@ -67,26 +66,10 @@ public class CAT
 
                 if (string.IsNullOrWhiteSpace(input)) continue;
 
-                string[] parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-                string cmd = parts[0];
-                string args = parts.Length > 1 ? parts[1] : "";
-
                 try
                 {
                     var token = _cancellationTokenSource.Token;
-
-                    if (Path.GetExtension(cmd).Equals(".catsh", StringComparison.OrdinalIgnoreCase))
-                    {
-                        RunScript(cmd, args, token).Wait(token);
-                    }
-                    else if (commands.TryGetValue(cmd.ToLower(), out var action))
-                    {
-                        RunCommand(action, args.Split(' '), token).Wait(token);
-                    }
-                    else
-                    {
-                        RunExternalCommand(cmd, args, token);
-                    }
+                    ExecuteInput(input, token).Wait(token);
                 }
                 catch (OperationCanceledException)
                 { }
@@ -99,18 +82,342 @@ public class CAT
         }
     }
 
-    private static async Task RunCommand(Func<string[], CancellationToken, Task> action, string[] args, CancellationToken token)
+    private class CommandNode
     {
+        public string Command = string.Empty;
+        public List<string> Args = new();
+        public string? StdInFile;
+        public string? StdOutFile;
+        public bool AppendOut;
+        public string? StdErrFile;
+        public bool AppendErr;
+    }
+
+    private static async Task ExecuteInput(string input, CancellationToken token)
+    {
+        var pipeline = ParsePipeline(input);
+        if (pipeline.Count == 0) return;
+
+        string pipelineInput = string.Empty;
+
+        var firstNode = pipeline[0];
+        if (!string.IsNullOrEmpty(firstNode.StdInFile))
+        {
+            try { pipelineInput = File.ReadAllText(firstNode.StdInFile); }
+            catch (Exception ex) { Console.WriteLine($"\u001b[31m< {ex.Message}\u001b[0m"); return; }
+        }
+
+        for (int i = 0; i < pipeline.Count; i++)
+        {
+            token.ThrowIfCancellationRequested();
+            var node = pipeline[i];
+            bool isLast = (i == pipeline.Count - 1);
+
+            string stdout = string.Empty;
+            string stderr = string.Empty;
+            int exitCode = 0;
+
+            bool redirectInput = !string.IsNullOrEmpty(pipelineInput);
+            bool redirectOutput = !isLast || !string.IsNullOrEmpty(node.StdOutFile) || !string.IsNullOrEmpty(node.StdErrFile);
+
+            if (commands.TryGetValue(node.Command.ToLower(), out var bundleAction))
+            {
+                if (redirectInput || redirectOutput)
+                    (stdout, stderr, exitCode) = await ExecuteBundleCommand(bundleAction, node.Args.ToArray(), pipelineInput, token);
+                else
+                    await RunCommand(bundleAction, node.Args.ToArray(), token);
+            }
+            else if (node.Command.EndsWith(".catsh", StringComparison.OrdinalIgnoreCase))
+            {
+                if (redirectInput || redirectOutput)
+                    (stdout, stderr, exitCode) = await ExecuteScriptCommand(node, pipelineInput, token);
+                else
+                    await RunScript(node.Command, string.Join(' ', node.Args), token);
+            }
+            else
+            {
+                try
+                {
+                    if (redirectInput || redirectOutput)
+                    {
+                        (stdout, stderr, exitCode) = await ExecuteExternal(node.Command, string.Join(' ', node.Args), pipelineInput, token);
+                    }
+                    else
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = node.Command,
+                            Arguments = string.Join(' ', node.Args),
+                            UseShellExecute = false
+                        };
+                        using var proc = Process.Start(psi);
+                        if (proc != null) await proc.WaitForExitAsync(token);
+                    }
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    Console.WriteLine($"\u001b[31mError, \"{node.Command}\" was not recognized as a bundle command, or executable file!\u001b[0m");
+                }
+            }
+
+            pipelineInput = stdout;
+
+            if (isLast)
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(node.StdOutFile))
+                        await File.WriteAllTextAsync(node.StdOutFile, stdout, token);
+                    else if (!string.IsNullOrEmpty(stdout))
+                        Console.Write(stdout);
+
+                    if (!string.IsNullOrEmpty(node.StdErrFile))
+                        await File.WriteAllTextAsync(node.StdErrFile, stderr, token);
+                    else if (!string.IsNullOrEmpty(stderr))
+                        Console.Error.Write(stderr);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"\u001b[31mRedirection error: {ex.Message}\u001b[0m");
+                }
+            }
+        }
+    }
+
+    private static async Task<(string stdout, string stderr, int exitCode)> ExecuteBundleCommand(
+        Func<string[], CancellationToken, Task> action, string[] args, string stdin, CancellationToken token)
+    {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        var originalIn = Console.In;
+
+        var swOut = new StringWriter();
+        var swErr = new StringWriter();
+
         try
         {
-            await action(args, token);
+            if (!string.IsNullOrEmpty(stdin))
+                Console.SetIn(new StringReader(stdin));
+
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+
+            await RunCommand(action, args, token);
         }
-        catch (OperationCanceledException)
-        { }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+            Console.SetIn(originalIn);
+        }
+
+        return (swOut.ToString(), swErr.ToString(), 0);
+    }
+
+    private static async Task<(string stdout, string stderr, int exitCode)> ExecuteScriptCommand(
+        CommandNode node, string stdin, CancellationToken token)
+    {
+        var originalOut = Console.Out;
+        var originalErr = Console.Error;
+        var originalIn = Console.In;
+
+        var swOut = new StringWriter();
+        var swErr = new StringWriter();
+
+        try
+        {
+            if (!string.IsNullOrEmpty(stdin))
+                Console.SetIn(new StringReader(stdin));
+
+            Console.SetOut(swOut);
+            Console.SetError(swErr);
+
+            await RunScript(node.Command, string.Join(' ', node.Args), token);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalErr);
+            Console.SetIn(originalIn);
+        }
+
+        return (swOut.ToString(), swErr.ToString(), 0);
+    }
+
+    private static async Task<(string stdout, string stderr, int exitCode)> ExecuteExternal(
+        string command, string args, string stdin, CancellationToken token)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = command,
+            Arguments = args,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = !string.IsNullOrEmpty(stdin),
+            CreateNoWindow = true
+        };
+
+        string stdout = string.Empty;
+        string stderr = string.Empty;
+        int exitCode = -1;
+
+        try
+        {
+            using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            _currentProcess = proc;
+            proc.Start();
+
+            if (!string.IsNullOrEmpty(stdin))
+            {
+                await proc.StandardInput.WriteAsync(stdin);
+                await proc.StandardInput.FlushAsync();
+                proc.StandardInput.Close();
+            }
+
+            var outTask = proc.StandardOutput.ReadToEndAsync();
+            var errTask = proc.StandardError.ReadToEndAsync();
+
+            while (!proc.HasExited)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    try { proc.Kill(true); } catch { }
+                    token.ThrowIfCancellationRequested();
+                }
+                await Task.Delay(10, token);
+            }
+
+            stdout = await outTask;
+            stderr = await errTask;
+            exitCode = proc.ExitCode;
+        }
         catch (Exception ex)
         {
-            Console.WriteLine($"\u001b[31mError in command: {ex.Message}\u001b[0m");
+            stderr = $"Error executing '{command}': {ex.Message}\n";
         }
+        finally
+        {
+            _currentProcess = null;
+        }
+
+        return (stdout, stderr, exitCode);
+    }
+
+    private static List<CommandNode> ParsePipeline(string input)
+    {
+        var tokens = Tokenize(input);
+        var segments = new List<List<string>>();
+        var current = new List<string>();
+
+        foreach (var t in tokens)
+        {
+            if (t == "|")
+            {
+                if (current.Count > 0) { segments.Add(current); current = new List<string>(); }
+            }
+            else current.Add(t);
+        }
+        if (current.Count > 0) segments.Add(current);
+
+        var pipeline = new List<CommandNode>();
+        for (int i = 0; i < segments.Count; i++)
+        {
+            pipeline.Add(ParseCommandNode(segments[i], isFirst: i == 0, isLast: i == segments.Count - 1));
+        }
+        return pipeline;
+    }
+
+    private static CommandNode ParseCommandNode(List<string> parts, bool isFirst, bool isLast)
+    {
+        var node = new CommandNode();
+
+        for (int i = 0; i < parts.Count; i++)
+        {
+            string tok = parts[i];
+            bool hasNext = (i + 1) < parts.Count;
+
+            if ((tok == ">" || tok == ">>") && isLast && hasNext)
+            {
+                node.StdOutFile = parts[++i];
+                node.AppendOut = (tok == ">>");
+                continue;
+            }
+            if ((tok == "2>" || tok == "2>>") && isLast && hasNext)
+            {
+                node.StdErrFile = parts[++i];
+                node.AppendErr = (tok == "2>>");
+                continue;
+            }
+            if (tok == "<" && isFirst && hasNext)
+            {
+                node.StdInFile = parts[++i];
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(node.Command)) node.Command = tok;
+            else node.Args.Add(tok);
+        }
+
+        return node;
+    }
+
+    private static List<string> Tokenize(string input)
+    {
+        var tokens = new List<string>();
+        var sb = new StringBuilder();
+        bool inSingle = false, inDouble = false;
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            char c = input[i];
+
+            if (c == '\\' && i + 1 < input.Length)
+            {
+                i++;
+                sb.Append(input[i]);
+                continue;
+            }
+
+            if (c == '\'' && !inDouble) { inSingle = !inSingle; continue; }
+            if (c == '"' && !inSingle) { inDouble = !inDouble; continue; }
+
+            if (!inSingle && !inDouble)
+            {
+                if (char.IsWhiteSpace(c)) { Flush(); continue; }
+                if (c == '|') { Flush(); tokens.Add("|"); continue; }
+                if (c == '<') { Flush(); tokens.Add("<"); continue; }
+                if (c == '>')
+                {
+                    Flush();
+                    if (i + 1 < input.Length && input[i + 1] == '>') { tokens.Add(">>"); i++; }
+                    else tokens.Add(">");
+                    continue;
+                }
+                if (c == '2' && i + 1 < input.Length && input[i + 1] == '>')
+                {
+                    if (i + 2 < input.Length && input[i + 2] == '>') { Flush(); tokens.Add("2>>"); i += 2; continue; }
+                    else { Flush(); tokens.Add("2>"); i += 1; continue; }
+                }
+            }
+
+            sb.Append(c);
+        }
+
+        Flush();
+        return tokens;
+
+        void Flush()
+        {
+            if (sb.Length > 0) { tokens.Add(sb.ToString()); sb.Clear(); }
+        }
+    }
+
+    private static async Task RunCommand(Func<string[], CancellationToken, Task> action, string[] args, CancellationToken token)
+    {
+        try { await action(args, token); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Console.WriteLine($"\u001b[31mError in command: {ex.Message}\u001b[0m"); }
     }
 
     private static void LoadBundles()
@@ -242,35 +549,6 @@ public class CAT
         return task.Result;
     }
 
-    private static void RunExternalCommand(string command, string args, CancellationToken token)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = command,
-                Arguments = args,
-                UseShellExecute = false,
-                CreateNoWindow = false
-            };
-
-            _currentProcess = Process.Start(psi);
-            while (_currentProcess != null && !_currentProcess.HasExited)
-            {
-                if (token.IsCancellationRequested)
-                {
-                    try { _currentProcess.Kill(true); } catch { }
-                    break;
-                }
-                Thread.Sleep(10);
-            }
-        }
-        catch
-        {
-            Console.WriteLine($"\u001b[31mError, \"{command}\" was not recognized as a bundle or executable file.\u001b[0m");
-        }
-    }
-
     private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
@@ -290,42 +568,19 @@ public class CAT
         }
 
         var lines = File.ReadAllLines(filePath)
-                             .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("#"))
+                             .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("//"))
                              .ToArray();
 
         foreach (var line in lines)
         {
-            token.ThrowIfCancellationRequested();
-
-            string expandedLine = line;
-
-            for (int i = 0; i < args.Split(' ').Length; i++)
-            {
-                expandedLine = expandedLine.Replace($"%{i + 1}", args.Split(' ')[i]);
-            }
-
-            string[] parts = expandedLine.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            string cmd = parts[0].ToLower();
-            string commandArgs = parts.Length > 1 ? parts[1] : "";
-
-            if (commands.TryGetValue(cmd, out var action))
-            {
-                await RunCommand(action, commandArgs.Split(' '), token);
-            }
-            else
-            {
-                RunExternalCommand(cmd, commandArgs, token);
-            }
+            await ExecuteInput(line, token);
         }
     }
 
     private static void EnableColor()
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            var handle = GetStdHandle(-11);
-            GetConsoleMode(handle, out uint mode);
-            SetConsoleMode(handle, mode | 0x0004);
-        }
+        var handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        GetConsoleMode(handle, out uint mode);
+        SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
 }
