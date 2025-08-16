@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Principal;
+using System.IO;
 
 public class CAT
 {
@@ -37,6 +39,8 @@ public class CAT
         Console.TreatControlCAsInput = false;
         Console.CancelKeyPress += OnCancelKeyPress;
 
+        string promptSymbol = IsAdministrator() ? "#" : "$";
+
         EnableColor();
 
         LoadBundles();
@@ -47,7 +51,7 @@ public class CAT
         while (true)
         {
             string prompt = GetPrompt();
-            Console.Write($"\n[{prompt}] ");
+            Console.Write($"\n[{prompt}]{promptSymbol} ");
 
             using (_cancellationTokenSource = new CancellationTokenSource())
             {
@@ -102,7 +106,7 @@ public class CAT
             await action(args, token);
         }
         catch (OperationCanceledException)
-        {}
+        { }
         catch (Exception ex)
         {
             Console.WriteLine($"\u001b[31mError in command: {ex.Message}\u001b[0m");
@@ -211,6 +215,22 @@ public class CAT
         return $"\u001b[33m{user}\u001b[0m@\u001b[35m{host}\u001b[0m:\u001b[36m{unix}\u001b[0m";
     }
 
+    private static bool IsAdministrator()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var identity = WindowsIdentity.GetCurrent();
+            var principal = new WindowsPrincipal(identity);
+            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        else
+        {
+            return Environment.GetEnvironmentVariable("USER") == "root" ||
+                   Environment.GetEnvironmentVariable("SUDO_USER") == "root" ||
+                   (int)Process.GetCurrentProcess().Id == 0;
+        }
+    }
+
     private static string ReadLineWithCancel(CancellationToken token)
     {
         var task = Task.Run(() => Console.ReadLine() ?? "", token);
@@ -270,8 +290,8 @@ public class CAT
         }
 
         var lines = File.ReadAllLines(filePath)
-                          .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("#"))
-                          .ToArray();
+                             .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith("#"))
+                             .ToArray();
 
         foreach (var line in lines)
         {
