@@ -48,4 +48,4 @@ public class BundleName // The name will be the prefix.
     }
 }
 ```
-* **Running:** You can easily run new bundles if they were successfully compiled by just simply typing the prefix and subfix, seperated by a period: `bundlename.command`. It is case-insensitive.
+* **Running:** You can easily run new bundles if they were successfully compiled by just simply typing the prefix/Bundle Name and subfix/Command, seperated by a period: `bundlename.command`. It is case-insensitive.
