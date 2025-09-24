@@ -40,6 +40,9 @@ One of the easiest ways to add functionality to CAT is by creating a new bundle.
 * **Structure:** Your bundle should contain a class and a public method that accepts arugments (`string[] args`) and CAT's cancellation token (`CancellationToken token`). For example:
 
 ```csharp
+using System;
+using System.Threading; // For CancellationToken.
+
 public class BundleName // The name will be the prefix.
 {
     public void Command(string[] args, CancellationToken token) // The name will be the command name.
