@@ -21,7 +21,6 @@ public class CAT
     private const int STD_OUTPUT_HANDLE = -11;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
 #endif
-    public static string version = "2025-b1.0.0";
 
     private static volatile Process? _currentProcess = null;
     private static volatile CancellationTokenSource? _cancellationTokenSource = null;
@@ -44,7 +43,7 @@ public class CAT
 
         LoadBundles();
 
-        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m {version}");
+        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m");
         Console.WriteLine("Copyright (c) 2025 \u001b[1;35mlunaNoir\u001b[0m");
 
         while (true)
