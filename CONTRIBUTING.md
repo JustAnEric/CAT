@@ -43,9 +43,9 @@ One of the easiest ways to add functionality to CAT is by creating a new bundle.
 using System;
 using System.Threading; // For CancellationToken.
 
-public class BundleName // The name will be the prefix.
+public class BundleName // The class name doesn't matter, it just mustn't be static or private.
 {
-    public void Command(string[] args, CancellationToken token) // The name will be the command name.
+    public void Command(string[] args, CancellationToken token) // The name will be the command name, it cannot be static or private.
     {
         Console.WriteLine("Hello, CAT!");
     }
