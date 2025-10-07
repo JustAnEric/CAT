@@ -1,12 +1,12 @@
 # C# Advanced Terminal
 <small><i>"If Bash and PowerShell had a kid."</i></small>
 
-Copyright (c) 2025 lunaNoir | MIT License | [[LICENSE.txt]]
+Copyright (c) 2025 lunaNoir | MIT License | Please view licensing information.
 
 <p style="text-align: center;"><img src="full.png" alt="CAT logo, made by Cynical_Dxyz"></p>
 
 Welcome to C# Advanced Terminal (or CAT for short), as the name suggests, it's a shell entirely written in C#, leveraging the uses of the .NET Framework.
-
+g
 ## What is CAT?
 <small><i>"First impressions are always the best impressons."</i></small>
 
@@ -63,7 +63,7 @@ Bundles aren't the only thing, as like other shells, you can run from your PATH,
 ## How do I contribute to CAT?
 <small><i>"A community isn't a community if no one can help."</i></small>
 
-See the contribution guide. [[CONTRIBUTING.md]]
+See the contribution guide. [[CONTRIBUTING]]
 
 ## Does CAT follow some Unix Philosophies?
 <small><i>"What really is Unix? A family? A concept? An operating system? It is all."</i></small>
