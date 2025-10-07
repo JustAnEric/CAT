@@ -63,7 +63,7 @@ Bundles aren't the only thing, as like other shells, you can run from your PATH,
 ## How do I contribute to CAT?
 <small><i>"A community isn't a community if no one can help."</i></small>
 
-See the contribution guide. [[CONTRIBUTING]]
+See the [Contribution Guide](https://github.com/lunaNoir25/CAT?tab=contributing-ov-file).
 
 ## Does CAT follow some Unix Philosophies?
 <small><i>"What really is Unix? A family? A concept? An operating system? It is all."</i></small>
