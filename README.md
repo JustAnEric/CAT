@@ -6,7 +6,6 @@ Copyright (c) 2025 lunaNoir | MIT License | Please view licensing information.
 <p style="text-align: center;"><img src="full.png" alt="CAT logo, made by Cynical_Dxyz"></p>
 
 Welcome to C# Advanced Terminal (or CAT for short), as the name suggests, it's a shell entirely written in C#, leveraging the uses of the .NET Framework.
-g
 ## What is CAT?
 <small><i>"First impressions are always the best impressons."</i></small>
 
