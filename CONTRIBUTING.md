@@ -11,7 +11,7 @@ There are many ways to contribute to CAT. You don't have to be a coding expert t
 * **Report Bugs:** If you find a bug, please create a new issue on our GitHub repository. Provide a clear description of the issue and steps to reproduce it. Screenshots or terminal output are very helpful.
 * **Suggest Features:** Have an idea for a new command, a quality-of-life improvement, or a major new feature? Open a discussion or a feature request issue to share your thoughts.
 * **Write Code:** We welcome all code contributions, whether it's a bug fix, a new bundle command, or a major refactor.
-* * Please note that base installation bundles are in a seperate repository, contribute to it here: [CAT-Data](https://github.com/lunaNoir25/CAT-data)
+* * Please note that base installation bundles are in a separate repository, contribute to it here: [CAT-Data](https://github.com/lunaNoir25/CAT-data)
 * **Improve Documentation:** Good documentation is crucial for an open-source project. You can help by clarifying existing docs, fixing typos, or writing new guides.
 * **Provide Feedback:** Join our discussions and give your feedback on new features, design decisions, and future plans.
 
