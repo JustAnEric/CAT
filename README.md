@@ -6,6 +6,48 @@ Copyright (c) 2025 lunaNoir | MIT License | Please view licensing information.
 <p style="text-align: center;"><img src="full.png" alt="CAT logo, made by Cynical_Dxyz"></p>
 
 Welcome to C# Advanced Terminal (or CAT for short), as the name suggests, it's a shell entirely written in C#, leveraging the uses of the .NET Framework.
+
+## Installing CAT.
+<small><i>"Sometimes it cannot just be a breeze."</i></small>
+
+Currently, x64 CAT is only available on the Arch Linux User Repository (AUR), but you can download portable versions in the releases tab.
+
+### Arch Linux User Repository
+
+Installing CAT is simple on the AUR, assuming you already have a tool to install packages from the AUR.
+
+```bash
+paru/yay -S cat-git
+```
+
+If you use yay, type only yay, if you use paru, type only paru. After it installs, you can easily run it using `catsh`.
+
+### Portable
+
+Linux versions will be a tar ball (.tar.gz), Windows versions will be (.zip). After downloading the archive file, just extract it and run the executable.
+
+### Post-Installation
+
+By default, CAT doesn't come with any bundles (unless your on Linux, in which it will use the commands in /bin or /usr/bin), but you can easily get some default bundles by cloning the CAT-data repository using git.
+
+Simply run these commands in your **default shell**.
+
+Linux:
+```bash
+git clone https://github.com/lunaNoir25/CAT-data.git
+cd CAT-data
+mv -r * ~/.config/CAT/
+```
+
+Windows, replace user with your user directory:
+```cmd
+git clone https://github.com/lunaNoir25/CAT-data.git
+cd CAT-data
+mkdir "C:\Users\user\AppData\Roaming\CAT" 2>nul
+move * C:\Users\user\AppData\Roaming\CAT\
+```
+
+And just like that, you now have CAT installed with some default bundles!
 ## What is CAT?
 <small><i>"First impressions are always the best impressons."</i></small>
 
