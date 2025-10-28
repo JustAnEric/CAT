@@ -28,7 +28,7 @@ public class CAT
 
     private static Dictionary<string, Func<string[], CancellationToken, Task>> commands = new(StringComparer.OrdinalIgnoreCase);
 
-    public static void Main()
+    public static async Task Main()
     {
         Console.Title = "C# Advanced Terminal | CAT";
         Console.TreatControlCAsInput = false;
@@ -46,9 +46,31 @@ public class CAT
 
         bool isolate = config?.isolate ?? false;
 
-        if(!isolate) { LoadBundles(); }
+        if (!isolate)
+        {
+            List<string> blacklist = config?.blacklist ?? [];
+            LoadBundles(blacklist);
+        }
 
-        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m");
+        Console.WriteLine();
+
+        List<string> start = config?.start ?? [];
+        foreach (string command in start)
+        {
+            using (_cancellationTokenSource = new CancellationTokenSource())
+            {
+                try
+                {
+                    await ExecuteInput(command, _cancellationTokenSource.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    continue;
+                }
+            }
+        }
+
+        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal \u001b[33m1.1.0\u001b[0m");
         Console.WriteLine("Copyright (c) 2025 \u001b[1;35mlunaNoir\u001b[0m");
 
         while (true)
@@ -99,8 +121,29 @@ public class CAT
 
     private static async Task ExecuteInput(string input, CancellationToken token)
     {
+        var config = LoadConfig();
+        var aliases = config?.aliases ?? new Dictionary<string, string>();
+
         var pipeline = ParsePipeline(input);
         if (pipeline.Count == 0) return;
+
+        foreach (var node in pipeline)
+        {
+            if (aliases.TryGetValue(node.Command.ToLower(), out string? aliasValue))
+            {
+                var aliasParts = Tokenize(aliasValue);
+                if (aliasParts.Count > 0)
+                {
+                    node.Command = aliasParts[0];
+                    if (aliasParts.Count > 1)
+                    {
+                        var aliasArgs = aliasParts.Skip(1).ToList();
+                        aliasArgs.AddRange(node.Args);
+                        node.Args = aliasArgs;
+                    }
+                }
+            }
+        }
 
         string pipelineInput = string.Empty;
 
@@ -456,7 +499,7 @@ public class CAT
         return JsonSerializer.Deserialize<Config>(configText);
     }
 
-    private static void LoadBundles()
+    private static void LoadBundles(List<string> blacklist)
     {
         string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT", "bundles");
         if (!Directory.Exists(path)) Directory.CreateDirectory(path);
@@ -465,6 +508,12 @@ public class CAT
         {
             string bundleName = Path.GetFileNameWithoutExtension(file);
             Console.WriteLine($"\u001b[33mRecognized bundle: {bundleName}\u001b[0m");
+
+            if (blacklist.Contains(bundleName))
+            {
+                Console.WriteLine($"\u001b[31m{bundleName} is blacklisted, skipping.\u001b[0m");
+                continue;
+            }
 
             bool isElevated = false;
             using (var reader = new StreamReader(file))
