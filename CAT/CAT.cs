@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Reflection;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 
 public class CAT
 {
@@ -41,7 +42,11 @@ public class CAT
         SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 #endif
 
-        LoadBundles();
+        Config? config = LoadConfig();
+
+        bool isolate = config?.isolate ?? false;
+
+        if(!isolate) { LoadBundles(); }
 
         Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal\u001b[0m");
         Console.WriteLine("Copyright (c) 2025 \u001b[1;35mlunaNoir\u001b[0m");
@@ -418,6 +423,38 @@ public class CAT
         catch (OperationCanceledException) { }
         catch (Exception ex) { Console.WriteLine($"\u001b[31mError in command: {ex.Message}\u001b[0m"); }
     }
+    
+
+    private static Config? LoadConfig()
+    {
+        string configText = string.Empty;
+
+        string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT");
+        if (!Directory.Exists(path)) Directory.CreateDirectory(path);
+
+        try
+        {
+            configText = File.ReadAllText($"{path}/config.json");
+        }
+        catch (FileNotFoundException)
+        {
+            File.Create($"{path}/config.json").Dispose();
+            return new Config
+            {
+                isolate = false,
+                aliases = new Dictionary<string, string>(),
+                start = new List<string>(),
+                blacklist = new List<string>()
+            };
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"\u001b[31mError, unable to read config file: {ex.Message}\u001b[0m");
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<Config>(configText);
+    }
 
     private static void LoadBundles()
     {
@@ -539,15 +576,31 @@ public class CAT
 
     private static string ReadLineWithCancel(CancellationToken token)
     {
-        var task = Task.Run(() => Console.ReadLine() ?? "", token);
-        while (!task.IsCompleted)
-        {
-            if (token.IsCancellationRequested) throw new OperationCanceledException();
-            Thread.Sleep(10);
-        }
-        return task.Result;
-    }
+        var task = Task.Run(() => Console.ReadLine(), token);
 
+        try
+        {
+            task.Wait(token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (AggregateException ae) when (ae.InnerException is OperationCanceledException)
+        {
+            throw new OperationCanceledException();
+        }
+
+        string? result = task.Result;
+
+        if (result == null)
+        {
+            System.Environment.Exit(0);
+        }
+
+        return result;
+    }
+    
     private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
@@ -575,4 +628,15 @@ public class CAT
             await ExecuteInput(line, token);
         }
     }
+}
+
+public class Config
+{
+    public required bool isolate { get; set; }
+
+    public required Dictionary<string, string> aliases { get; set; }
+
+    public required List<string> start{ get; set; }
+
+    public required List<string> blacklist{ get; set; }
 }
