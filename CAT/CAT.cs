@@ -121,7 +121,7 @@ public class CAT
 
     private static async Task ExecuteInput(string input, CancellationToken token)
     {
-        var config = LoadConfig();
+        Config? config = LoadConfig();
         var aliases = config?.aliases ?? new Dictionary<string, string>();
 
         var pipeline = ParsePipeline(input);
