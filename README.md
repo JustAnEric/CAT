@@ -36,7 +36,8 @@ Linux:
 ```bash
 git clone https://github.com/lunaNoir25/CAT-data.git
 cd CAT-data
-mv -r * ~/.config/CAT/
+mkdir -p ~/.config/CAT
+mv * ~/.config/CAT/
 ```
 
 Windows, replace user with your user directory:

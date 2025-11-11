@@ -41,7 +41,6 @@ public class CAT
         GetConsoleMode(handle, out uint mode);
         SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 #endif
-
         Config? config = LoadConfig();
 
         bool isolate = config?.isolate ?? false;
@@ -70,7 +69,7 @@ public class CAT
             }
         }
 
-        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal \u001b[33m1.1.0\u001b[0m");
+        Console.WriteLine($"\n\u001b[1;35mC\u001b[0m# \u001b[1;35mA\u001b[0mdvanced \u001b[1;35mT\u001b[0merminal \u001b[33m1.1.1\u001b[0m");
         Console.WriteLine("Copyright (c) 2025 \u001b[1;35mlunaNoir\u001b[0m");
 
         while (true)
@@ -466,11 +465,11 @@ public class CAT
         catch (OperationCanceledException) { }
         catch (Exception ex) { Console.WriteLine($"\u001b[31mError in command: {ex.Message}\u001b[0m"); }
     }
-    
 
     private static Config? LoadConfig()
     {
         string configText = string.Empty;
+        Config? config;
 
         string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CAT");
         if (!Directory.Exists(path)) Directory.CreateDirectory(path);
@@ -494,6 +493,27 @@ public class CAT
         {
             Console.WriteLine($"\u001b[31mError, unable to read config file: {ex.Message}\u001b[0m");
             return null;
+        }
+
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\u001b[4;31mFatal Error occured when trying to read config file: {ex.Message}\u001b[0m");
+            Environment.Exit(131);
+        }
+
+        try
+        {
+            config = JsonSerializer.Deserialize<Config>(configText);
+        }
+        catch (JsonException)
+        {
+            return new Config
+            {
+                isolate = false,
+                aliases = new Dictionary<string, string>(),
+                start = new List<string>(),
+                blacklist = new List<string>()
+            };
         }
 
         return JsonSerializer.Deserialize<Config>(configText);
@@ -649,7 +669,7 @@ public class CAT
 
         return result;
     }
-    
+
     private static void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
@@ -685,7 +705,7 @@ public class Config
 
     public required Dictionary<string, string> aliases { get; set; }
 
-    public required List<string> start{ get; set; }
+    public required List<string> start { get; set; }
 
-    public required List<string> blacklist{ get; set; }
+    public required List<string> blacklist { get; set; }
 }
