@@ -516,7 +516,7 @@ public class CAT
             };
         }
 
-        return JsonSerializer.Deserialize<Config>(configText);
+        return config;
     }
 
     private static void LoadBundles(List<string> blacklist)
