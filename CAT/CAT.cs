@@ -516,6 +516,29 @@ public class CAT
             };
         }
 
+        catch (JsonReaderException)
+        {
+            return new Config
+            {
+                isolate = false,
+                aliases = new Dictionary<string, string>(),
+                start = new List<string>(),
+                blacklist = new List<string>()
+            };
+        }
+
+        catch (Exception ex)
+        {
+            Console.WriteLine($"\u001b[4;31mError occured when trying to parse config file: {ex.Message}\u001b[0m");
+            return new Config
+            {
+                isolate = false,
+                aliases = new Dictionary<string, string>(),
+                start = new List<string>(),
+                blacklist = new List<string>()
+            };
+        }
+
         return config;
     }
 
