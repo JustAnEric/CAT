@@ -72,7 +72,7 @@ That choice is up to you, and what you do. Here are some reasons to try CAT:
 - Portable, and self-contained.
 - Nostalgic. (Don't ask where I got this from.)
 - It's a platform, not just a shell.
-- Because CAT is the best. (Yes, I took this straight out of Arch Linux.)
+- Because CAT is attempting to be the best but is currently failing horribly. :3
 
 And a list of who CAT would catch the eye of:
 - .NET Developers.
